@@ -21,6 +21,9 @@
 // Vector
 #include <vector>
 
+// Command Line Parser
+#include <opencv2/core/utility.hpp>
+
 using namespace std;
 
 // >>>>> Color to be tracked
@@ -28,9 +31,7 @@ using namespace std;
 #define MAX_H_BLUE 300
 // <<<<< Color to be tracked
 
-
-int main()
-{
+int main(int argc, char const *argv[]) {
     // Camera frame
     cv::Mat frame;
 
@@ -87,21 +88,49 @@ int main()
     cv::setIdentity(kf.measurementNoiseCov, cv::Scalar(1e-1));
     // <<<< Kalman Filter
 
+    // >>>>> Command Line Parser
+    const cv::String keys =
+        "{help h usage ? |     | print this message            }"
+        "{video          | .   | video specified for tracking  }";
+
+    cv::CommandLineParser parser(argc, argv, keys);
+    parser.about("OpenCV 4.3.0 Object Tracking with Kalman Filter");
+    if (parser.has("help")) {
+        parser.printMessage();
+        return EXIT_SUCCESS;
+    }
+
+    cv::String filename = parser.get<cv::String>("video");
+
+    if (!parser.check()) {
+        parser.printErrors();
+        return EXIT_FAILURE;
+    }
+    // <<<<< Command Line Parser
+
     // Camera Index
-    int idx = 0;
+    int webcam_idx = 0;
 
     // Camera Capture
     cv::VideoCapture cap;
 
     // >>>>> Camera Settings
-    if (!cap.open(idx))
-    {
-        cout << "Webcam not connected.\n" << "Please verify\n";
-        return EXIT_FAILURE;
+    if (filename == ".") {
+        if (!cap.open(webcam_idx)) {
+            cout << "Webcam not connected.\n"
+                 << "Please verify\n";
+            return EXIT_FAILURE;
+        }
+    } else {
+        if (!cap.open(filename)) {
+            cout << "Filename '" << filename << "' not found.\n"
+                 << "Please verify\n";
+            return EXIT_FAILURE;
+        }
     }
 
-    cap.set(CV_CAP_PROP_FRAME_WIDTH, 1024);
-    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 768);
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, 1024);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 768);
     // <<<<< Camera Settings
 
     cout << "\nHit 'q' to exit...\n";
@@ -114,30 +143,30 @@ int main()
     int notFoundCount = 0;
 
     // >>>>> Main loop
-    while (ch != 'q' && ch != 'Q')
-    {
+    while (ch != 'q' && ch != 'Q') {
         double precTick = ticks;
-        ticks = (double) cv::getTickCount();
+        ticks = (double)cv::getTickCount();
 
-        double dT = (ticks - precTick) / cv::getTickFrequency(); //seconds
+        double dT = (ticks - precTick) / cv::getTickFrequency();  //seconds
 
         // Frame acquisition
         cap >> frame;
 
         cv::Mat res;
-        frame.copyTo( res );
+        frame.copyTo(res);
 
-        if (found)
-        {
+        if (found) {
             // >>>> Matrix A
             kf.transitionMatrix.at<float>(2) = dT;
             kf.transitionMatrix.at<float>(9) = dT;
             // <<<< Matrix A
 
-            cout << "dT:" << endl << dT << endl;
+            cout << "dT:" << endl
+                 << dT << endl;
 
             state = kf.predict();
-            cout << "State post:" << endl << state << endl;
+            cout << "State post:" << endl
+                 << state << endl;
 
             cv::Rect predRect;
             predRect.width = state.at<float>(4);
@@ -148,9 +177,9 @@ int main()
             cv::Point center;
             center.x = state.at<float>(0);
             center.y = state.at<float>(1);
-            cv::circle(res, center, 2, CV_RGB(255,0,0), -1);
+            cv::circle(res, center, 2, CV_RGB(255, 0, 0), -1);
 
-            cv::rectangle(res, predRect, CV_RGB(255,0,0), 2);
+            cv::rectangle(res, predRect, CV_RGB(255, 0, 0), 2);
         }
 
         // >>>>> Noise smoothing
@@ -160,7 +189,7 @@ int main()
 
         // >>>>> HSV conversion
         cv::Mat frmHsv;
-        cv::cvtColor(blur, frmHsv, CV_BGR2HSV);
+        cv::cvtColor(blur, frmHsv, cv::COLOR_BGR2GRAY);
         // <<<<< HSV conversion
 
         // >>>>> Color Thresholding
@@ -180,25 +209,23 @@ int main()
 
         // >>>>> Contours detection
         vector<vector<cv::Point> > contours;
-        cv::findContours(rangeRes, contours, CV_RETR_EXTERNAL,
-                         CV_CHAIN_APPROX_NONE);
+        cv::findContours(rangeRes, contours, cv::RETR_EXTERNAL,
+                         cv::CHAIN_APPROX_NONE);
         // <<<<< Contours detection
 
         // >>>>> Filtering
         vector<vector<cv::Point> > balls;
         vector<cv::Rect> ballsBox;
-        for (size_t i = 0; i < contours.size(); i++)
-        {
+        for (size_t i = 0; i < contours.size(); i++) {
             cv::Rect bBox;
             bBox = cv::boundingRect(contours[i]);
 
-            float ratio = (float) bBox.width / (float) bBox.height;
+            float ratio = (float)bBox.width / (float)bBox.height;
             if (ratio > 1.0f)
                 ratio = 1.0f / ratio;
 
             // Searching for a bBox almost square
-            if (ratio > 0.75 && bBox.area() >= 400)
-            {
+            if (ratio > 0.75 && bBox.area() >= 400) {
                 balls.push_back(contours[i]);
                 ballsBox.push_back(bBox);
             }
@@ -208,38 +235,33 @@ int main()
         cout << "Balls found:" << ballsBox.size() << endl;
 
         // >>>>> Detection result
-        for (size_t i = 0; i < balls.size(); i++)
-        {
-            cv::drawContours(res, balls, i, CV_RGB(20,150,20), 1);
-            cv::rectangle(res, ballsBox[i], CV_RGB(0,255,0), 2);
+        for (size_t i = 0; i < balls.size(); i++) {
+            cv::drawContours(res, balls, i, CV_RGB(20, 150, 20), 1);
+            cv::rectangle(res, ballsBox[i], CV_RGB(0, 255, 0), 2);
 
             cv::Point center;
             center.x = ballsBox[i].x + ballsBox[i].width / 2;
             center.y = ballsBox[i].y + ballsBox[i].height / 2;
-            cv::circle(res, center, 2, CV_RGB(20,150,20), -1);
+            cv::circle(res, center, 2, CV_RGB(20, 150, 20), -1);
 
             stringstream sstr;
             sstr << "(" << center.x << "," << center.y << ")";
             cv::putText(res, sstr.str(),
                         cv::Point(center.x + 3, center.y - 3),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(20,150,20), 2);
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(20, 150, 20), 2);
         }
         // <<<<< Detection result
 
         // >>>>> Kalman Update
-        if (balls.size() == 0)
-        {
+        if (balls.size() == 0) {
             notFoundCount++;
             cout << "notFoundCount:" << notFoundCount << endl;
-            if( notFoundCount >= 100 )
-            {
+            if (notFoundCount >= 100) {
                 found = false;
             }
             /*else
                 kf.statePost = state;*/
-        }
-        else
-        {
+        } else {
             notFoundCount = 0;
 
             meas.at<float>(0) = ballsBox[0].x + ballsBox[0].width / 2;
@@ -247,15 +269,15 @@ int main()
             meas.at<float>(2) = (float)ballsBox[0].width;
             meas.at<float>(3) = (float)ballsBox[0].height;
 
-            if (!found) // First detection!
+            if (!found)  // First detection!
             {
                 // >>>> Initialization
-                kf.errorCovPre.at<float>(0) = 1; // px
-                kf.errorCovPre.at<float>(7) = 1; // px
+                kf.errorCovPre.at<float>(0) = 1;  // px
+                kf.errorCovPre.at<float>(7) = 1;  // px
                 kf.errorCovPre.at<float>(14) = 1;
                 kf.errorCovPre.at<float>(21) = 1;
-                kf.errorCovPre.at<float>(28) = 1; // px
-                kf.errorCovPre.at<float>(35) = 1; // px
+                kf.errorCovPre.at<float>(28) = 1;  // px
+                kf.errorCovPre.at<float>(35) = 1;  // px
 
                 state.at<float>(0) = meas.at<float>(0);
                 state.at<float>(1) = meas.at<float>(1);
@@ -266,13 +288,13 @@ int main()
                 // <<<< Initialization
 
                 kf.statePost = state;
-                
-                found = true;
-            }
-            else
-                kf.correct(meas); // Kalman Correction
 
-            cout << "Measure matrix:" << endl << meas << endl;
+                found = true;
+            } else
+                kf.correct(meas);  // Kalman Correction
+
+            cout << "Measure matrix:" << endl
+                 << meas << endl;
         }
         // <<<<< Kalman Update
 
